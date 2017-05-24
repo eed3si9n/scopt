@@ -26,8 +26,7 @@ lazy val scopt = (crossProject(JSPlatform, JVMPlatform, NativePlatform) in file(
     // to push, ghpages-push-site
     siteSubdirName in SiteScaladoc := "$v/api",
     git.remoteRepo := "git@github.com:scopt/scopt.git",
-    description := """a command line options parsing library""",
-    scalacOptions ++= Seq("-language:existentials", "-Xfuture", "-deprecation"),
+    libraryDependencies += "org.scalatest" %% "scalatest" % "3.0.1" % Test,
     resolvers += "sonatype-public" at "https://oss.sonatype.org/content/repositories/public",
     // scaladoc fix
     unmanagedClasspath in Compile += Attributed.blank(new java.io.File("doesnotexist"))
