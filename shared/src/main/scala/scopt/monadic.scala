@@ -18,18 +18,24 @@ trait Builder[C] {
   def opt[A: Read](name: String): Parser[A, C] =
     wrap(makeDef[A](Opt, name))
 
-  /** adds an argument invoked by an option without `-` or `--`.
-   * @param name name in the usage text
-   */
-  def arg[A: Read](name: String): Parser[A, C] =
-    wrap(makeDef(Arg, name)).required()
-
   /** adds an option invoked by `-x value` or `--name value`.
    * @param x name of the short option
    * @param name name of the option
    */
   def opt[A: Read](x: Char, name: String): Parser[A, C] =
     opt[A](name).abbr(x.toString)
+
+  /** adds an argument invoked by an option without `-` or `--`.
+   * @param name name in the usage text
+   */
+  def arg[A: Read](name: String): Parser[A, C] =
+    wrap(makeDef(Arg, name)).required()
+
+  /** adds a command invoked by an option without `-` or `--`.
+   * @param name name of the command
+   */
+  def cmd(name: String): Parser[Unit, C] =
+    wrap(makeDef[Unit](Cmd, name))
 
   /** adds final check. */
   def checkConfig(f: C => Either[String, Unit]): Parser[Unit, C] =
@@ -82,6 +88,9 @@ case class Parser[A, C](head: ParserDef[A, C], rest: List[ParserDef[_, C]]) {
   /** Hides the option in any usage text. */
   def hidden(): Parser[A, C] = subHead[A](head.hidden())
 
+  /** Adds a parser under this command. */
+  def children(c: Parser[A, C]): Parser[A, C] = subHead[A](head.children(c))
+
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]): Parser[A, C] = subHead[A](head.validate(f))
 
@@ -131,7 +140,8 @@ case class ParserDef[A: Read, C](
   _parentId: Option[Int],
   _minOccurs: Int,
   _maxOccurs: Int,
-  _isHidden: Boolean
+  _isHidden: Boolean,
+  _children: List[ParserDef[_, C]]
 ) {
   private[scopt] def read: Read[A] = implicitly[Read[A]]
 
@@ -150,6 +160,9 @@ case class ParserDef[A: Read, C](
 
   /** Hides the option in any usage text. */
   def hidden(): ParserDef[A, C] = copy(_isHidden = true)
+
+  /** Adds opt/arg under this command. */
+  def children(x: Parser[_, C]): ParserDef[A, C] = copy(_children = x.toList)
 
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]): ParserDef[A, C] =
@@ -240,7 +253,8 @@ object ParserDef {
       _parentId = None,
       _minOccurs = 0,
       _maxOccurs = 1,
-      _isHidden = false)
+      _isHidden = false,
+      _children = Nil)
 }
 
 sealed abstract class ParseResult[A]

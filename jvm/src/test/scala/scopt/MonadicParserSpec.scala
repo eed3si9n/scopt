@@ -352,6 +352,40 @@ class MonadicParserSpec extends FlatSpec with Matchers {
     assert((result.get.a == "a") && (result.get.b == "b"))
   }
 
+  """for {
+    |  _ <- arg[String]("<a>").action( (x, c) => c.copy(a = x) ).unbounded().optional()
+    |  _ <- arg[String]("<b>").action( (x, c) => c.copy(b = x) ).optional()
+    |} yield ()""".stripMargin should "generate usage" in {
+    unboundedArgsParser1.usage shouldEqual
+      """scopt 3.x
+        |Usage: scopt
+        |
+        |  <a>  
+        |  <b>  """.stripMargin
+  }
+
+  it should """parse "b" out of a b""" in {
+    val result = unboundedArgsParser1.parse(List("a", "b"), Config())
+    assert((result.get.a == "b") && (result.get.b == ""))
+  }
+
+  it should "parse nothing out of Nil" in {
+    val result = unboundedArgsParser1.parse(Nil, Config())
+    assert((result.get.a == "") && (result.get.b == ""))
+  }
+
+  """cmd("update").action({ x => x })
+    |  .children(for {
+    |    _ <- opt[Unit]("foo") action { x => x}
+    |  } yield ())""".stripMargin should "generate usage" in {
+    cmdParser1.usage shouldEqual
+      """scopt 3.x
+        |Usage: scopt
+        |
+        |  <a>  
+        |  <b>  """.stripMargin
+  }
+
   lazy val programName1: Parser[Unit, Config] = {
     import builder._
     programName("scopt")
@@ -768,6 +802,28 @@ class MonadicParserSpec extends FlatSpec with Matchers {
       _ <- head("scopt", "3.x")
       _ <- arg[String]("<a>").action( (x, c) => c.copy(a = x) )
       _ <- arg[String]("<b>").action( (x, c) => c.copy(b = x) )
+    } yield ()
+  }
+
+  lazy val unboundedArgsParser1: Parser[Unit, Config] = {
+    import builder._
+    for {
+      _ <- programName("scopt")
+      _ <- head("scopt", "3.x")
+      _ <- arg[String]("<a>").action( (x, c) => c.copy(a = x) ).unbounded().optional()
+      _ <- arg[String]("<b>").action( (x, c) => c.copy(b = x) ).optional()
+    } yield ()
+  }
+
+  lazy val cmdParser1: Parser[Unit, Config] = {
+    import builder._
+    for {
+      _ <- programName("scopt")
+      _ <- head("scopt", "3.x")
+      _ <- cmd("update").action( (x, c) => c.copy(flag = true) )
+             .children(for {
+               _ <- opt[Unit]("foo").action( (x, c) => c.copy(stringValue = "foo") )
+             } yield ())
     } yield ()
   }
 
