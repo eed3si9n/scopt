@@ -1,4 +1,4 @@
-def v: String = "3.5.0"
+def v: String = "3.5.0-SNAPSHOT"
 
 lazy val root = (project in file(".")).
   settings(
@@ -14,10 +14,10 @@ lazy val root = (project in file(".")).
     // site
     // to preview, preview-site
     // to push, ghpages-push-site
-    site.settings,
-    site.includeScaladoc(s"$v/api"),
-    ghpages.settings,
-    git.remoteRepo := "git@github.com:scopt/scopt.git",
+    // site.settings,
+    // site.includeScaladoc(s"$v/api"),
+    // ghpages.settings,
+    // git.remoteRepo := "git@github.com:scopt/scopt.git",
     description := """a command line options parsing library""",
     libraryDependencies ++= {
       scalaVersion.value match {

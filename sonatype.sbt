@@ -20,8 +20,9 @@ publishArtifact in (Compile, packageBin) := true
 
 publishArtifact in Test := false
 
-publishTo <<= version { (v: String) =>
+publishTo := {
   val nexus = "https://oss.sonatype.org/"
+  val v = version.value
   if (v.trim.endsWith("SNAPSHOT")) 
     Some("snapshots" at nexus + "content/repositories/snapshots") 
   else
