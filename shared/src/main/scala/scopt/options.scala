@@ -442,6 +442,7 @@ class OptionDef[A: Read, C](
   _validations: Seq[A => Either[String, Unit]],
   _configValidations: Seq[C => Either[String, Unit]],
   _parentId: Option[Int],
+  _parentNames: Seq[String],
   _minOccurs: Int,
   _maxOccurs: Int,
   _isHidden: Boolean,
@@ -455,8 +456,13 @@ class OptionDef[A: Read, C](
       _shortOpt = None, _keyName = None, _valueName = None,
       _desc = "", _action = { (a: A, c: C) => c },
       _validations = Seq(), _configValidations = Seq(),
-      _parentId = None, _minOccurs = 0, _maxOccurs = 1,
-      _isHidden = false, _fallback = None)
+      _parentId = None,
+      _parentNames = Vector(),
+      _minOccurs = 0,
+      _maxOccurs = 1,
+      _isHidden = false,
+      _fallback = None)
+
 
   private[scopt] def copy(
     _parser: OptionParser[C] = this._parser,
@@ -471,6 +477,7 @@ class OptionDef[A: Read, C](
     _validations: Seq[A => Either[String, Unit]] = this._validations,
     _configValidations: Seq[C => Either[String, Unit]] = this._configValidations,
     _parentId: Option[Int] = this._parentId,
+    _parentNames: Seq[String] = this._parentNames,
     _minOccurs: Int = this._minOccurs,
     _maxOccurs: Int = this._maxOccurs,
     _isHidden: Boolean = this._isHidden,
@@ -478,8 +485,12 @@ class OptionDef[A: Read, C](
     new OptionDef(_parser = _parser, _id = _id, _kind = _kind, _name = _name, _shortOpt = _shortOpt,
       _keyName = _keyName, _valueName = _valueName, _desc = _desc, _action = _action,
       _validations = _validations, _configValidations = _configValidations,
-      _parentId = _parentId, _minOccurs = _minOccurs, _maxOccurs = _maxOccurs,
-      _isHidden = _isHidden, _fallback = _fallback)
+      _parentId = _parentId,
+      _parentNames = _parentNames,
+      _minOccurs = _minOccurs,
+      _maxOccurs = _maxOccurs,
+      _isHidden = _isHidden,
+      _fallback = _fallback)
 
   private[this] def read: Read[A] = implicitly[Read[A]]
 
@@ -536,7 +547,10 @@ class OptionDef[A: Read, C](
   private[scopt] def validateConfig(f: C => Either[String, Unit]) =
     _parser.updateOption(copy(_configValidations = _configValidations :+ f))
   private[scopt] def parent(x: OptionDef[_, C]): OptionDef[A, C] =
-    _parser.updateOption(copy(_parentId = Some(x.id)))
+    _parser.updateOption(copy(
+      _parentId = Some(x.id),
+      _parentNames = x.getParentNames ++ Vector(x.name)
+    ))
   /** Adds opt/arg under this command. */
   def children(xs: OptionDef[_, C]*): OptionDef[A, C] = {
     xs foreach {_.parent(this)}
@@ -552,9 +566,11 @@ class OptionDef[A: Read, C](
   private[scopt] def shortOptOrBlank: String = _shortOpt getOrElse("")
   private[scopt] def hasParent: Boolean = _parentId.isDefined
   private[scopt] def getParentId: Option[Int] = _parentId
-  def isHidden: Boolean = _isHidden
   def hasFallback: Boolean = _fallback.isDefined
   def getFallback: A = _fallback.get.apply
+  private[scopt] def getParentNames: Seq[String] = _parentNames
+  private[scopt] def isHidden: Boolean = _isHidden
+
   private[scopt] def checks: Seq[C => Either[String, Unit]] = _configValidations
   def desc: String = _desc
   def shortOpt: Option[String] = _shortOpt

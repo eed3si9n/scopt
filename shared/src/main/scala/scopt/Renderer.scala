@@ -131,7 +131,7 @@ private[scopt] object Renderer {
     //   case Some(x) => (commands find {_.id == x} map {commandName} getOrElse {""}) + " "
     //   case _       => ""
     // }) + cmd.name
-    ???
+    cmd.name
   }
 
     // {

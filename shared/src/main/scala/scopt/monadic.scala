@@ -3,7 +3,10 @@ package scopt
 import OptionDef._
 import collection.mutable.{ListBuffer, ListMap}
 
-trait Builder[C] {
+/**
+ * `Builder[C]` is used to capture the configuration class `C`.
+ */
+sealed abstract class Builder[C] {
 
   def programName(x: String): Parser[Unit, C] =
     wrap(makeDef[Unit](ProgramName, "")).text(x)
@@ -89,7 +92,8 @@ case class Parser[A, C](head: ParserDef[A, C], rest: List[ParserDef[_, C]]) {
   def hidden(): Parser[A, C] = subHead[A](head.hidden())
 
   /** Adds a parser under this command. */
-  def children(c: Parser[A, C]): Parser[A, C] = subHead[A](head.children(c))
+  def children(c: Parser[A, C]): Parser[A, C] = 
+    subHead[A](head.children(c))
 
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]): Parser[A, C] = subHead[A](head.validate(f))
@@ -162,7 +166,8 @@ case class ParserDef[A: Read, C](
   def hidden(): ParserDef[A, C] = copy(_isHidden = true)
 
   /** Adds opt/arg under this command. */
-  def children(x: Parser[_, C]): ParserDef[A, C] = copy(_children = x.toList)
+  def children(x: Parser[_, C]): ParserDef[A, C] =
+    copy(_children = x.toList)
 
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]): ParserDef[A, C] =
