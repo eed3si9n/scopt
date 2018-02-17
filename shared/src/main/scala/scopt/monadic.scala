@@ -130,7 +130,7 @@ case class Parser[A, C](head: ParserDef[A, C], rest: List[ParserDef[_, C]]) {
     ParseEngine.parse(this, args, init, config)
 }
 
-case class ParserDef[A: Read, C](
+case class ParserDef[A: Read, C] private[scopt] (
   _id: Int,
   _kind: OptionDefKind,
   _name: String,
@@ -142,6 +142,7 @@ case class ParserDef[A: Read, C](
   _configValidations: List[C => Either[String, Unit]],
   _validations: List[A => Either[String, Unit]],
   _parentId: Option[Int],
+  _parentNames: List[String],
   _minOccurs: Int,
   _maxOccurs: Int,
   _isHidden: Boolean,
@@ -167,7 +168,10 @@ case class ParserDef[A: Read, C](
 
   /** Adds opt/arg under this command. */
   def children(x: Parser[_, C]): ParserDef[A, C] =
-    copy(_children = x.toList)
+    copy(_children = x.toList map { child => child.setParent(this) })
+
+  private[scopt] def setParent(parent: ParserDef[_, _]): ParserDef[A, C] =
+    copy(_parentId = Option(parent._id), _parentNames = _parentNames :+ parent._name)
 
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]): ParserDef[A, C] =
@@ -256,6 +260,7 @@ object ParserDef {
       _configValidations = List(),
       _validations = List(),
       _parentId = None,
+      _parentNames = Nil,
       _minOccurs = 0,
       _maxOccurs = 1,
       _isHidden = false,
