@@ -7,11 +7,7 @@ object SonatypePlugin extends AutoPlugin {
 
   override def projectSettings: Seq[Setting[_]] = Seq(
     pomExtra :=
-      (<scm>
-        <url>git@github.com:scopt/scopt.git</url>
-        <connection>scm:git:git@github.com:scopt/scopt.git</connection>
-      </scm>
-      <developers>
+      (<developers>
         <developer>
           <id>eed3si9n</id>
           <name>Eugene Yokota</name>
