@@ -71,12 +71,15 @@ import scala.collection.{ Seq => CSeq }
  * }
  * }}}
  */
-abstract class OptionParser[C](programName: String) { self =>
+abstract class OptionParser[C](programName: String)
+  extends OptionDefCallback[C] { self =>
   protected val options = new ListBuffer[OptionDef[_, C]]
   protected val helpOptions = new ListBuffer[OptionDef[_, C]]
 
   import platform._
   private[scopt] val defaultConfig: DefaultScoptConfiguration = new DefaultScoptConfiguration {}
+  private[scopt] lazy val (header0, usage0) =
+    ScoptEngine.renderUsage(programName, renderingMode, options.toList)
 
   def errorOnUnknownArgument: Boolean = defaultConfig.errorOnUnknownArgument
   def showUsageOnError: Boolean = helpOptions.isEmpty
@@ -169,7 +172,8 @@ abstract class OptionParser[C](programName: String) { self =>
   def showHeader(): Unit = {
     Console.out.println(header)
   }
-  def header: String = ScoptEngine.renderHeader(options.toList)
+
+  def header: String = header0
 
   def showUsage(): Unit = {
     Console.out.println(usage)
@@ -177,12 +181,7 @@ abstract class OptionParser[C](programName: String) { self =>
   def showUsageAsError(): Unit = {
     Console.err.println(usage)
   }
-  def usage: String = renderUsage(renderingMode)
-  def renderUsage(mode: RenderingMode): String =
-    ScoptEngine.renderUsage(programName, mode, options.toList)
-
-  private[scopt] def commandExample(cmd: Option[OptionDef[_, C]]): String =
-    ScoptEngine.commandExample(programName, cmd, options.toList)
+  def usage: String = usage0
 
   /** call this to express success in custom validation. */
   def success: Either[String, Unit] = OptionDef.makeSuccess[String]
@@ -190,7 +189,8 @@ abstract class OptionParser[C](programName: String) { self =>
   def failure(msg: String): Either[String, Unit] = Left(msg)
 
   protected def makeDef[A: Read](kind: OptionDefKind, name: String): OptionDef[A, C] =
-    updateOption(new OptionDef[A, C](parser = this, kind = kind, name = name))
+    updateOption(new OptionDef[A, C](defCallback = this, kind = kind, name = name))
+  private[scopt] def onChange[A: Read](option: OptionDef[A, C]): Unit = updateOption(option)
   private[scopt] def updateOption[A: Read](option: OptionDef[A, C]): OptionDef[A, C] = {
     val idx = options indexWhere { _.id == option.id }
     if (idx > -1) options(idx) = option

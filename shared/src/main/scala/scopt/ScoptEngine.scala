@@ -4,23 +4,17 @@ import collection.mutable.ListBuffer
 import collection.immutable.ListMap
 import scala.collection.{ Seq => CSeq }
 import scala.collection.immutable.{ Seq => ISeq }
+import OptionDef._
 
 private[scopt] object ScoptEngine {
-  def renderHeader[C](options: List[OptionDef[_, C]]): String = {
-    def heads: ISeq[OptionDef[_, C]] = options filter {_.kind == Head}
-    import OptionDef._
-    (heads map {_.usage}).mkString(NL)
-  }
-
   def renderUsage[C](
       programName: String,
       mode: RenderingMode,
-      options: List[OptionDef[_, C]]): String = {
+      options: List[OptionDef[_, C]]): (String, String) = {
 
     def heads: ISeq[OptionDef[_, C]] = options filter {_.kind == Head}
     def arguments: ISeq[OptionDef[_, C]] = options filter {_.kind == Arg}
     def commands: ISeq[OptionDef[_, C]] = options filter {_.kind == Cmd}
-    def header: String = renderHeader[C](options)
 
     def optionsForRender: List[OptionDef[_, C]] = {
       val unsorted = options filter { o => o.kind != Head && o.kind != Check && !o.isHidden }
@@ -44,61 +38,102 @@ private[scopt] object ScoptEngine {
       sorted.toList
     }
 
+    def itemUsage(value: OptionDef[_, C]): String =
+      value.kind match {
+        case Head | Note | Check => value.desc
+        case Cmd =>
+          "Command: " + commandExample(Some(value)) +  NL + value.desc
+        case Arg => WW + value.name + NLTB + value.desc
+        case Opt if value.read.arity == 2 =>
+          WW + (value.shortOpt map { o => "-" + o + ":" + value.keyValueString + " | " } getOrElse { "" }) +
+          value.fullName + ":" +value.keyValueString + NLTB + value.desc
+        case Opt if value.read.arity == 1 =>
+          WW + (value.shortOpt map { o => "-" + o + " " + value.valueString + " | " } getOrElse { "" }) +
+          value.fullName + " " + value.valueString + NLTB + value.desc
+        case Opt =>
+          WW + (value.shortOpt map { o => "-" + o + " | " } getOrElse { "" }) +
+          value.fullName + NLTB + value.desc
+      }
+
+    lazy val header = (heads map {itemUsage}).mkString(NL)
+
+    def usageColumn1(value: OptionDef[_, C]): String =
+      value.kind match {
+        case Head | Note | Check => ""
+        case Cmd =>
+          "Command: " + commandExample(Some(value)) + NL
+        case Arg => WW + value.name
+        case Opt if value.read.arity == 2 =>
+          WW + (value.shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
+          value.fullName + ":" + value.keyValueString
+        case Opt if value.read.arity == 1 =>
+          WW + (value.shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
+          value.fullName + " " + value.valueString
+        case Opt =>
+          WW + (value.shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
+          value.fullName
+      }
+
+    def usageTwoColumn(value: OptionDef[_, C], col1Length: Int): String = {
+      def spaceToDesc(str: String) = if (str.length <= col1Length) str + " " * (col1Length - str.length)
+                                    else str.dropRight(WW.length) + NL + " " * col1Length
+      value.kind match {
+        case Head | Note | Check => value.desc
+        case Cmd => usageColumn1(value) + value.desc
+        case Arg => spaceToDesc(usageColumn1(value) + WW) + value.desc
+        case Opt if value.read.arity == 2 => spaceToDesc(usageColumn1(value) + WW) + value.desc
+        case Opt if value.read.arity == 1 => spaceToDesc(usageColumn1(value) + WW) + value.desc
+        case Opt => spaceToDesc(usageColumn1(value) + WW) + value.desc
+      }
+    }
+
     def renderOneColumnUsage: String = {
-      import OptionDef._
-      val descriptions = optionsForRender map {_.usage}
+      val descriptions = optionsForRender map {itemUsage}
       (if (header == "") "" else header + NL) +
       "Usage: " + usageExample + NLNL +
       descriptions.mkString(NL)
     }
 
     def renderTwoColumnsUsage: String = {
-      import OptionDef._
       val xs = optionsForRender
       val descriptions = {
-        val col1Len = math.min(column1MaxLength, xs map {_.usageColumn1.length + WW.length} match {
+        val col1Len = math.min(column1MaxLength, xs map { x => usageColumn1(x).length + WW.length} match {
           case Nil => 0
           case list => list.max
         })
-        xs map {_.usageTwoColumn(col1Len)}
+        xs map { x => usageTwoColumn(x, col1Len)}
       }
       (if (header == "") "" else header + NL) +
       "Usage: " + usageExample + NLNL +
       descriptions.mkString(NL)
     }
 
-    def usageExample: String = commandExample(programName, None, options)
+    def commandExample(cmd: Option[OptionDef[_, C]]): String = {
+      def commandName(cmd: OptionDef[_, C]): String =
+        (cmd.getParentId map { x =>
+          (commands find {_.id == x} map {commandName} getOrElse {""}) + " "
+        } getOrElse {""}) + cmd.name
 
-    mode match {
+      val text = new ListBuffer[String]()
+      text += cmd map {commandName} getOrElse programName
+      val parentId = cmd map {_.id}
+      val cs = commands filter { c => c.getParentId == parentId && !c.isHidden }
+      if (cs.nonEmpty) text += cs map {_.name} mkString("[", "|", "]")
+      val os = options.toSeq filter { case x => x.kind == Opt && x.getParentId == parentId }
+      val as = arguments filter {_.getParentId == parentId}
+      if (os.nonEmpty) text += "[options]"
+      if (cs exists { case x => arguments exists {_.getParentId == Some(x.id)}}) text += "<args>..."
+      else if (as.nonEmpty) text ++= as map {_.argName}
+      text.mkString(" ")
+    }
+
+    def usageExample: String = commandExample(None)
+
+    val usg = mode match {
       case RenderingMode.OneColumn => renderOneColumnUsage
       case RenderingMode.TwoColumns => renderTwoColumnsUsage
     }
-  }
-
-  def commandExample[C](
-      programName: String,
-      cmd: Option[OptionDef[_, C]],
-      options: List[OptionDef[_, C]]
-      ): String = {
-
-    def arguments: ISeq[OptionDef[_, C]] = options filter {_.kind == Arg}
-    def commands: ISeq[OptionDef[_, C]] = options filter {_.kind == Cmd}
-    def commandName(cmd: OptionDef[_, C]): String =
-      (cmd.getParentId map { x =>
-        (commands find {_.id == x} map {commandName} getOrElse {""}) + " "
-      } getOrElse {""}) + cmd.name
-
-    val text = new ListBuffer[String]()
-    text += cmd map {commandName} getOrElse programName
-    val parentId = cmd map {_.id}
-    val cs = commands filter { c => c.getParentId == parentId && !c.isHidden }
-    if (cs.nonEmpty) text += cs map {_.name} mkString("[", "|", "]")
-    val os = options.toSeq filter { case x => x.kind == Opt && x.getParentId == parentId }
-    val as = arguments filter {_.getParentId == parentId}
-    if (os.nonEmpty) text += "[options]"
-    if (cs exists { case x => arguments exists {_.getParentId == Some(x.id)}}) text += "<args>..."
-    else if (as.nonEmpty) text ++= as map {_.argName}
-    text.mkString(" ")
+    (header, usg)
   }
 
   /** parses the given `args`.

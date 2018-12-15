@@ -11,7 +11,7 @@ private[scopt] case object Head extends OptionDefKind
 private[scopt] case object Check extends OptionDefKind
 
 class OptionDef[A: Read, C](
-  _parser: OptionParser[C],
+  _defCallback: OptionDefCallback[C],
   _id: Int,
   _kind: OptionDefKind,
   _name: String,
@@ -31,8 +31,8 @@ class OptionDef[A: Read, C](
   import platform._
   import OptionDef._
 
-  def this(parser: OptionParser[C], kind: OptionDefKind, name: String) =
-    this(_parser = parser, _id = OptionDef.generateId, _kind = kind, _name = name,
+  def this(defCallback: OptionDefCallback[C], kind: OptionDefKind, name: String) =
+    this(_defCallback = defCallback, _id = OptionDef.generateId, _kind = kind, _name = name,
       _shortOpt = None, _keyName = None, _valueName = None,
       _desc = "", _action = { (a: A, c: C) => c },
       _validations = CSeq(), _configValidations = CSeq(),
@@ -40,7 +40,7 @@ class OptionDef[A: Read, C](
       _isHidden = false, _fallback = None)
 
   private[scopt] def copy(
-    _parser: OptionParser[C] = this._parser,
+    _defCallback: OptionDefCallback[C] = this._defCallback,
     _id: Int = this._id,
     _kind: OptionDefKind = this._kind,
     _name: String = this._name,
@@ -56,20 +56,25 @@ class OptionDef[A: Read, C](
     _maxOccurs: Int = this._maxOccurs,
     _isHidden: Boolean = this._isHidden,
     _fallback: Option[() => A] = this._fallback): OptionDef[A, C] =
-    new OptionDef(_parser = _parser, _id = _id, _kind = _kind, _name = _name, _shortOpt = _shortOpt,
+    new OptionDef(_defCallback = _defCallback, _id = _id, _kind = _kind, _name = _name, _shortOpt = _shortOpt,
       _keyName = _keyName, _valueName = _valueName, _desc = _desc, _action = _action,
       _validations = _validations, _configValidations = _configValidations,
       _parentId = _parentId, _minOccurs = _minOccurs, _maxOccurs = _maxOccurs,
       _isHidden = _isHidden, _fallback = _fallback)
 
-  private[this] def read: Read[A] = implicitly[Read[A]]
+  private[scopt] def read: Read[A] = implicitly[Read[A]]
+
+  private[this] def fireChange[A: Read](value: OptionDef[A, C]): OptionDef[A, C] = {
+    _defCallback.onChange(value)
+    value
+  }
 
   /** Adds a callback function. */
   def action(f: (A, C) => C): OptionDef[A, C] =
-    _parser.updateOption(copy(_action = (a: A, c: C) => { f(a, _action(a, c)) }))
+    fireChange(copy(_action = (a: A, c: C) => { f(a, _action(a, c)) }))
   /** Adds a callback function. */
   def foreach(f: A => Unit): OptionDef[A, C] =
-    _parser.updateOption(copy(_action = (a: A, c: C) => {
+    fireChange(copy(_action = (a: A, c: C) => {
       val c2 = _action(a, c)
       f(a)
       c2
@@ -79,45 +84,45 @@ class OptionDef[A: Read, C](
 
   /** Adds short option -x. */
   def abbr(x: String): OptionDef[A, C] =
-    _parser.updateOption(copy(_shortOpt = Some(x)))
+    fireChange(copy(_shortOpt = Some(x)))
   /** Requires the option to appear at least `n` times. */
   def minOccurs(n: Int): OptionDef[A, C] =
-    _parser.updateOption(copy(_minOccurs = n))
+    fireChange(copy(_minOccurs = n))
   /** Requires the option to appear at least once. */
   def required(): OptionDef[A, C] = minOccurs(1)
   /** Changes the option to be optional. */
   def optional(): OptionDef[A, C] = minOccurs(0)
   /** Allows the argument to appear at most `n` times. */
   def maxOccurs(n: Int): OptionDef[A, C] =
-    _parser.updateOption(copy(_maxOccurs = n))
+    fireChange(copy(_maxOccurs = n))
   /** Allows the argument to appear multiple times. */
   def unbounded(): OptionDef[A, C] = maxOccurs(UNBOUNDED)
   /** Adds description in the usage text. */
   def text(x: String): OptionDef[A, C] =
-    _parser.updateOption(copy(_desc = x))
+    fireChange(copy(_desc = x))
   /** Adds value name used in the usage text. */
   def valueName(x: String): OptionDef[A, C] =
-    _parser.updateOption(copy(_valueName = Some(x)))
+    fireChange(copy(_valueName = Some(x)))
   /** Adds key name used in the usage text. */
   def keyName(x: String): OptionDef[A, C] =
-    _parser.updateOption(copy(_keyName = Some(x)))
+    fireChange(copy(_keyName = Some(x)))
   /** Adds key and value names used in the usage text. */
   def keyValueName(k: String, v: String): OptionDef[A, C] =
     keyName(k) valueName(v)
   /** Adds custom validation. */
   def validate(f: A => Either[String, Unit]) =
-    _parser.updateOption(copy(_validations = _validations :+ f))
+    fireChange(copy(_validations = _validations :+ f))
   /** Hides the option in any usage text. */
   def hidden(): OptionDef[A, C] =
-    _parser.updateOption(copy(_isHidden = true))
+    fireChange(copy(_isHidden = true))
   /** provides a default to fallback to, e.g. for System.getenv */
   def withFallback(to: () => A): OptionDef[A, C] =
-    _parser.updateOption(copy(_fallback = Option(to)))
+    fireChange(copy(_fallback = Option(to)))
 
   private[scopt] def validateConfig(f: C => Either[String, Unit]) =
-    _parser.updateOption(copy(_configValidations = _configValidations :+ f))
+    fireChange(copy(_configValidations = _configValidations :+ f))
   private[scopt] def parent(x: OptionDef[_, C]): OptionDef[A, C] =
-    _parser.updateOption(copy(_parentId = Some(x.id)))
+    fireChange(copy(_parentId = Some(x.id)))
   /** Adds opt/arg under this command. */
   def children(xs: OptionDef[_, C]*): OptionDef[A, C] = {
     xs foreach {_.parent(this)}
@@ -183,50 +188,7 @@ class OptionDef[A: Read, C](
   private[scopt] def token(i: Int, args: CSeq[String]): Option[String] =
     if (i >= args.length || kind != Opt) None
     else Some(args(i))
-  private[scopt] def usage: String =
-    kind match {
-      case Head | Note | Check => _desc
-      case Cmd =>
-        "Command: " + _parser.commandExample(Some(this)) +  NL + _desc
-      case Arg => WW + name + NLTB + _desc
-      case Opt if read.arity == 2 =>
-        WW + (_shortOpt map { o => "-" + o + ":" + keyValueString + " | " } getOrElse { "" }) +
-        fullName + ":" + keyValueString + NLTB + _desc
-      case Opt if read.arity == 1 =>
-        WW + (_shortOpt map { o => "-" + o + " " + valueString + " | " } getOrElse { "" }) +
-        fullName + " " + valueString + NLTB + _desc
-      case Opt =>
-        WW + (_shortOpt map { o => "-" + o + " | " } getOrElse { "" }) +
-        fullName + NLTB + _desc
-    }
-  private[scopt] def usageTwoColumn(col1Length: Int): String = {
-    def spaceToDesc(str: String) = if (str.length <= col1Length) str + " " * (col1Length - str.length)
-                                   else str.dropRight(WW.length) + NL + " " * col1Length
-    kind match {
-      case Head | Note | Check => _desc
-      case Cmd => usageColumn1 + _desc
-      case Arg => spaceToDesc(usageColumn1 + WW) + _desc
-      case Opt if read.arity == 2 => spaceToDesc(usageColumn1 + WW) + _desc
-      case Opt if read.arity == 1 => spaceToDesc(usageColumn1 + WW) + _desc
-      case Opt => spaceToDesc(usageColumn1 + WW) + _desc
-    }
-  }
-  private[scopt] def usageColumn1: String =
-    kind match {
-      case Head | Note | Check => ""
-      case Cmd =>
-        "Command: " + _parser.commandExample(Some(this)) + NL
-      case Arg => WW + name
-      case Opt if read.arity == 2 =>
-        WW + (_shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
-        fullName + ":" + keyValueString
-      case Opt if read.arity == 1 =>
-        WW + (_shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
-        fullName + " " + valueString
-      case Opt =>
-        WW + (_shortOpt map { o => "-" + o + ", " } getOrElse { "" }) +
-        fullName
-    }
+
   private[scopt] def keyValueString: String = (_keyName getOrElse defaultKeyName) + "=" + valueString
   private[scopt] def valueString: String = (_valueName getOrElse defaultValueName)
   def shortDescription: String =
@@ -260,4 +222,8 @@ private[scopt] object OptionDef {
   val atomic = new java.util.concurrent.atomic.AtomicInteger
   def generateId: Int = atomic.incrementAndGet
   def makeSuccess[A]: Either[A, Unit] = Right(())
+}
+
+abstract class OptionDefCallback[C] {
+  private[scopt] def onChange[A: Read](value: OptionDef[A, C]): Unit
 }
